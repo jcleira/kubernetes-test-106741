@@ -1,10 +1,14 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/moby/term"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -12,10 +16,39 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
+	"k8s.io/client-go/util/homedir"
+	"k8s.io/kubernetes/pkg/util/interrupt"
+
+	"github.com/jcleira/kubernetes-test-106741/dep"
 )
 
+type params struct {
+	namespace string
+	pod       string
+	container string
+}
+
 func main() {
-	config, err := clientcmd.RESTConfigFromKubeConfig([]byte(db.GetKubeConfig(env, region)))
+	var (
+		namespace = flag.String("namespace", "default", "namespace")
+		pod       = flag.String("pod", "", "pod")
+		container = flag.String("container", "", "container")
+	)
+	t := params{
+		namespace: *namespace,
+		pod:       *pod,
+		container: *container,
+	}
+
+	var kubeconfig *string
+	if home := homedir.HomeDir(); home != "" {
+		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+	} else {
+		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+	}
+	flag.Parse()
+
+	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -28,6 +61,8 @@ func main() {
 	config.GroupVersion = &groupversion
 	config.APIPath = "/api"
 	config.ContentType = runtime.ContentTypeJSON
+	config.NegotiatedSerializer = dep.BasicNegotiatedSerializer{}
+
 	restclient, err := rest.RESTClientFor(config)
 	if err != nil {
 		log.Fatal(err)
@@ -53,17 +88,16 @@ func main() {
 			return err
 		}
 		return executor.Stream(remotecommand.StreamOptions{
-			Stdin:             t,
-			Stdout:            t,
-			Stderr:            t,
-			Tty:               true,
-			TerminalSizeQueue: t,
+			Stdin:  os.Stdin,
+			Stdout: os.Stdout,
+			Stderr: os.Stderr,
+			Tty:    true,
 		})
 	}
 
-	inFd, _ := term.GetFdInfo(t.conn)
+	inFd, _ := term.GetFdInfo(os.Stdout)
 	state, err := term.SaveState(inFd)
-	return interrupt.Chain(nil, func() {
+	interrupt.Chain(nil, func() {
 		term.RestoreTerminal(inFd, state)
 	}).Run(fn)
 }
