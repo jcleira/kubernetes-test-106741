@@ -2,12 +2,12 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 
-	"github.com/moby/term"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -69,12 +69,13 @@ func main() {
 	}
 
 	fn := func() error {
-		req := restclient.Get().
+		req := restclient.Post().
 			Resource("pods").
 			Name(t.pod).
 			Namespace(t.namespace).
 			SubResource("log").
 			Param("pretty", "true")
+
 		req.VersionedParams(
 			&v1.PodLogOptions{
 				Container: t.container,
@@ -87,17 +88,18 @@ func main() {
 		if err != nil {
 			return err
 		}
-		return executor.Stream(remotecommand.StreamOptions{
+		err = executor.Stream(remotecommand.StreamOptions{
 			Stdin:  os.Stdin,
 			Stdout: os.Stdout,
 			Stderr: os.Stderr,
 			Tty:    true,
 		})
+
+		fmt.Println(err)
+		return err
 	}
 
-	inFd, _ := term.GetFdInfo(os.Stdout)
-	state, err := term.SaveState(inFd)
 	interrupt.Chain(nil, func() {
-		term.RestoreTerminal(inFd, state)
+		fmt.Println("done!")
 	}).Run(fn)
 }
