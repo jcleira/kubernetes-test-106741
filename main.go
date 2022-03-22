@@ -29,17 +29,6 @@ type params struct {
 }
 
 func main() {
-	var (
-		namespace = flag.String("namespace", "default", "namespace")
-		pod       = flag.String("pod", "", "pod")
-		container = flag.String("container", "", "container")
-	)
-	t := params{
-		namespace: *namespace,
-		pod:       *pod,
-		container: *container,
-	}
-
 	var kubeconfig *string
 	if home := homedir.HomeDir(); home != "" {
 		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
@@ -69,19 +58,21 @@ func main() {
 	}
 
 	fn := func() error {
-		req := restclient.Post().
+		req := restclient.Get().
 			Resource("pods").
-			Name(t.pod).
-			Namespace(t.namespace).
+			Name("kubernetes-bootcamp-65d5b99f84-d2sld").
+			Namespace("default").
 			SubResource("log").
-			Param("pretty", "true")
+			Param("container", "kubernetes-bootcamp")
 
 		req.VersionedParams(
-			&v1.PodLogOptions{
-				Container: t.container,
-			},
-			scheme.ParameterCodec,
-		)
+			&v1.PodExecOptions{
+				Container: "kubernetes-bootcamp",
+				Command:   []string{"/bin/sh", "-c", "ls", "-ll", "."},
+				Stdin:     false,
+				Stdout:    true,
+			}, scheme.ParameterCodec)
+
 		executor, err := remotecommand.NewSPDYExecutor(
 			config, http.MethodGet, req.URL(),
 		)
@@ -89,10 +80,9 @@ func main() {
 			return err
 		}
 		err = executor.Stream(remotecommand.StreamOptions{
-			Stdin:  os.Stdin,
 			Stdout: os.Stdout,
 			Stderr: os.Stderr,
-			Tty:    true,
+			Tty:    false,
 		})
 
 		fmt.Println(err)
